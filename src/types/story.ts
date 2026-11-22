@@ -1,5 +1,9 @@
 export type ImageSize = "1K" | "2K" | "4K";
 
+export type VideoAspectRatio = "16:9" | "9:16";
+export type VideoDuration = "5s" | "8s" | "10s";
+export type VideoResolution = "360p" | "720p" | "1080p";
+
 export type VoiceName = "Kore" | "Puck" | "Zephyr" | "Charon" | "Fenrir";
 
 export type NarrationTone = "warm" | "playful" | "bedtime";
@@ -14,6 +18,17 @@ export interface IllustrationVersion {
   createdAt: number;
 }
 
+export interface VideoVersion {
+  id: string;
+  videoUrl: string;
+  interactionId?: string;
+  duration: VideoDuration;
+  resolution: VideoResolution;
+  aspectRatio: VideoAspectRatio;
+  promptUsed: string;
+  createdAt: number;
+}
+
 export interface StoryPage {
   id: string;
   pageNumber: number;
@@ -23,6 +38,9 @@ export interface StoryPage {
   illustrationPrompt: string;
   activeIllustrationUrl: string | null;
   illustrationHistory: IllustrationVersion[];
+  activeVideoUrl?: string | null;
+  activeVideoInteractionId?: string | null;
+  videoHistory?: VideoVersion[];
 }
 
 export interface StoryBook {
@@ -103,3 +121,7 @@ export const ART_STYLES = [
 ] as const;
 
 export const IMAGE_SIZES: ImageSize[] = ["1K", "2K", "4K"];
+
+export const VIDEO_ASPECT_RATIOS: VideoAspectRatio[] = ["16:9", "9:16"];
+export const VIDEO_DURATIONS: VideoDuration[] = ["5s", "8s", "10s"];
+export const VIDEO_RESOLUTIONS: VideoResolution[] = ["360p", "720p", "1080p"];

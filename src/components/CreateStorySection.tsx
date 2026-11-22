@@ -15,6 +15,7 @@ interface CreateStorySectionProps {
     pageCount: number;
     artStyle: string;
     imageSize: ImageSize;
+    includeTrailerVideo: boolean;
   }) => void;
 }
 
@@ -40,6 +41,7 @@ export const CreateStorySection: React.FC<CreateStorySectionProps> = ({
   const [pageCount, setPageCount] = useState(4);
   const [artStyle, setArtStyle] = useState<string>(ART_STYLES[0]);
   const [imageSize, setImageSize] = useState<ImageSize>("1K");
+  const [includeTrailerVideo, setIncludeTrailerVideo] = useState(false);
   const [bannerFailed, setBannerFailed] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -52,6 +54,7 @@ export const CreateStorySection: React.FC<CreateStorySectionProps> = ({
       pageCount,
       artStyle,
       imageSize,
+      includeTrailerVideo,
     });
   };
 
@@ -238,6 +241,21 @@ export const CreateStorySection: React.FC<CreateStorySectionProps> = ({
                 </div>
               </div>
             </div>
+
+            <label className="flex items-start gap-3 rounded-xl border border-[#E4DDD0] bg-[#FAF8F4] px-4 py-3 cursor-pointer hover:border-[#C5BBA8] transition-colors">
+              <input
+                type="checkbox"
+                checked={includeTrailerVideo}
+                onChange={(e) => setIncludeTrailerVideo(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-[#C5BBA8] text-[#1E40AF] focus:ring-[#1E40AF] cursor-pointer"
+              />
+              <span className="text-xs sm:text-sm text-[#3D352C] leading-snug">
+                <strong className="font-semibold text-[#1F1C18]">
+                  Also animate Page 1 into a story video
+                </strong>{" "}
+                — generates a 5s animated scene from Page 1's illustration right after painting.
+              </span>
+            </label>
           </div>
 
           {error && (

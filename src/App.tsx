@@ -17,6 +17,9 @@ import type {
   NarrationTone,
   StoryBook,
   StoryPage,
+  VideoAspectRatio,
+  VideoDuration,
+  VideoResolution,
   VoiceName,
 } from "./types/story";
 
@@ -65,6 +68,13 @@ export default function App() {
   const [isBatchIllustrating, setIsBatchIllustrating] = useState(false);
   const [batchProgressText, setBatchProgressText] = useState("");
   const [imageError, setImageError] = useState<string | null>(null);
+
+  // Video studio state (gemini-omni-1.2-flash)
+  const [videoDuration, setVideoDuration] = useState<VideoDuration>("5s");
+  const [videoResolution, setVideoResolution] = useState<VideoResolution>("720p");
+  const [videoAspectRatio, setVideoAspectRatio] = useState<VideoAspectRatio>("16:9");
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   // Story creation state
   const [isCreatingStory, setIsCreatingStory] = useState(false);
@@ -483,6 +493,152 @@ export default function App() {
     [activeBook.id, activePage.id]
   );
 
+  const updateBookPageVideo = useCallback(
+    (
+      bookId: string,
+      targetPageId: string,
+      videoUrl: string,
+      interactionId: string | undefined,
+      duration: VideoDuration,
+      resolution: VideoResolution,
+      aspectRatio: VideoAspectRatio,
+      promptUsed: string
+    ) => {
+      setBooks((prev) =>
+        prev.map((b) => {
+          if (b.id !== bookId) return b;
+          const updatedPages = b.pages.map((p) => {
+            if (p.id !== targetPageId) return p;
+            const clip = {
+              id: `${targetPageId}-vid-${Date.now()}`,
+              videoUrl,
+              interactionId,
+              duration,
+              resolution,
+              aspectRatio,
+              promptUsed,
+              createdAt: Date.now(),
+            };
+            return {
+              ...p,
+              activeVideoUrl: videoUrl,
+              activeVideoInteractionId: interactionId ?? null,
+              videoHistory: [clip, ...(p.videoHistory ?? [])],
+            };
+          });
+          const updatedBook: StoryBook = { ...b, pages: updatedPages };
+          void saveBookToLibrary(updatedBook);
+          return updatedBook;
+        })
+      );
+    },
+    []
+  );
+
+  const requestPageVideo = useCallback(
+    async (
+      targetBook: StoryBook,
+      targetPage: StoryPage,
+      options: {
+        prompt?: string;
+        sourceImageUrl?: string | null;
+        duration: VideoDuration;
+        resolution: VideoResolution;
+        aspectRatio: VideoAspectRatio;
+        previousInteractionId?: string | null;
+      }
+    ) => {
+      const promptToUse = (options.prompt ?? targetPage.illustrationPrompt).trim();
+      const res = await fetch("/api/videos/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: promptToUse,
+          artStyle: targetBook.artStyle,
+          imageUrl: options.previousInteractionId ? "" : options.sourceImageUrl ?? "",
+          aspectRatio: options.aspectRatio,
+          duration: options.duration,
+          resolution: options.resolution,
+          characterVisualGuide: targetBook.characterVisualGuide,
+          previousInteractionId: options.previousInteractionId ?? "",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.videoUrl) {
+        throw new Error(data.error || "Unable to generate video.");
+      }
+      updateBookPageVideo(
+        targetBook.id,
+        targetPage.id,
+        data.videoUrl as string,
+        data.interactionId as string | undefined,
+        options.duration,
+        options.resolution,
+        options.aspectRatio,
+        promptToUse
+      );
+    },
+    [updateBookPageVideo]
+  );
+
+  const handleGenerateCurrentVideo = useCallback(
+    async (customPrompt?: string, extendPrevious = false) => {
+      if (isGeneratingVideo || isGeneratingImage || isBatchIllustrating) return;
+      setVideoError(null);
+      setIsGeneratingVideo(true);
+      try {
+        await requestPageVideo(activeBook, activePage, {
+          prompt: extendPrevious
+            ? `Continue the scene smoothly: ${customPrompt || activePage.illustrationPrompt}`
+            : customPrompt,
+          sourceImageUrl: activePage.activeIllustrationUrl,
+          duration: videoDuration,
+          resolution: videoResolution,
+          aspectRatio: videoAspectRatio,
+          previousInteractionId: extendPrevious ? activePage.activeVideoInteractionId : null,
+        });
+      } catch (err) {
+        setVideoError(err instanceof Error ? err.message : "Video generation failed.");
+      } finally {
+        setIsGeneratingVideo(false);
+      }
+    },
+    [
+      isGeneratingVideo,
+      isGeneratingImage,
+      isBatchIllustrating,
+      requestPageVideo,
+      activeBook,
+      activePage,
+      videoDuration,
+      videoResolution,
+      videoAspectRatio,
+    ]
+  );
+
+  const handleSelectVideoVersion = useCallback(
+    (videoUrl: string, interactionId?: string) => {
+      setBooks((prev) =>
+        prev.map((b) => {
+          if (b.id !== activeBook.id) return b;
+          const updatedPages = b.pages.map((p) =>
+            p.id === activePage.id
+              ? {
+                  ...p,
+                  activeVideoUrl: videoUrl,
+                  activeVideoInteractionId: interactionId ?? null,
+                }
+              : p
+          );
+          const updatedBook: StoryBook = { ...b, pages: updatedPages };
+          void saveBookToLibrary(updatedBook);
+          return updatedBook;
+        })
+      );
+    },
+    [activeBook.id, activePage.id]
+  );
+
   const handleCreateStory = useCallback(
     async (params: {
       idea: string;
@@ -491,6 +647,7 @@ export default function App() {
       pageCount: number;
       artStyle: string;
       imageSize: ImageSize;
+      includeTrailerVideo: boolean;
     }) => {
       setCreationError(null);
       setIsCreatingStory(true);
@@ -569,6 +726,7 @@ export default function App() {
 
         // Automatically paint an illustration for every page of the newly created story
         setIsBatchIllustrating(true);
+        let firstPageImageUrl: string | null = null;
         for (let i = 0; i < newBook.pages.length; i++) {
           const targetPage = newBook.pages[i];
           setCreationStatus(
@@ -576,7 +734,31 @@ export default function App() {
           );
           setBatchProgressText(`Painting ${i + 1}/${newBook.pages.length}...`);
           try {
-            await requestPageIllustration(newBook, targetPage, params.imageSize);
+            const resImg = await fetch("/api/illustrations/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                prompt: targetPage.illustrationPrompt,
+                artStyle: newBook.artStyle,
+                imageSize: params.imageSize,
+                aspectRatio: "4:3",
+                characterVisualGuide: newBook.characterVisualGuide,
+              }),
+            });
+            const imgData = await resImg.json();
+            if (!resImg.ok || !imgData.imageUrl) {
+              throw new Error(imgData.error || `Failed to paint page ${i + 1}.`);
+            }
+            if (i === 0) {
+              firstPageImageUrl = imgData.imageUrl as string;
+            }
+            updateBookPageIllustration(
+              newBook.id,
+              targetPage.id,
+              imgData.imageUrl as string,
+              params.imageSize,
+              targetPage.illustrationPrompt
+            );
           } catch (imgErr) {
             setImageError(
               imgErr instanceof Error
@@ -584,6 +766,26 @@ export default function App() {
                 : `Failed to paint page ${i + 1}.`
             );
             break;
+          }
+        }
+
+        if (params.includeTrailerVideo && newBook.pages[0]) {
+          setIsGeneratingVideo(true);
+          setCreationStatus("Animating Page 1 into a storybook video...");
+          try {
+            await requestPageVideo(newBook, newBook.pages[0], {
+              prompt: newBook.pages[0].illustrationPrompt,
+              sourceImageUrl: firstPageImageUrl,
+              duration: "5s",
+              resolution: videoResolution,
+              aspectRatio: videoAspectRatio,
+            });
+          } catch (vidErr) {
+            setVideoError(
+              vidErr instanceof Error ? vidErr.message : "Could not animate Page 1 video."
+            );
+          } finally {
+            setIsGeneratingVideo(false);
           }
         }
       } catch (err) {
@@ -597,7 +799,13 @@ export default function App() {
         setCreationStatus("");
       }
     },
-    [requestPageIllustration, stopPageAudio]
+    [
+      stopPageAudio,
+      updateBookPageIllustration,
+      requestPageVideo,
+      videoResolution,
+      videoAspectRatio,
+    ]
   );
 
   const handleSelectBook = useCallback(
@@ -775,6 +983,16 @@ export default function App() {
           onGenerateIllustration={handleGenerateCurrentIllustration}
           onIllustrateRemainingPages={handleIllustrateRemainingPages}
           onSelectIllustrationVersion={handleSelectIllustrationVersion}
+          videoDuration={videoDuration}
+          onChangeVideoDuration={setVideoDuration}
+          videoResolution={videoResolution}
+          onChangeVideoResolution={setVideoResolution}
+          videoAspectRatio={videoAspectRatio}
+          onChangeVideoAspectRatio={setVideoAspectRatio}
+          isGeneratingVideo={isGeneratingVideo}
+          videoError={videoError}
+          onGenerateVideo={handleGenerateCurrentVideo}
+          onSelectVideoVersion={handleSelectVideoVersion}
           voiceName={voiceName}
           onChangeVoice={handleChangeVoice}
           narrationTone={narrationTone}

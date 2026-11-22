@@ -3,6 +3,8 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  FastForward,
+  Film,
   ImagePlus,
   Layers,
   Loader2,
@@ -17,6 +19,9 @@ import {
   ART_STYLES,
   IMAGE_SIZES,
   TONE_OPTIONS,
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_DURATIONS,
+  VIDEO_RESOLUTIONS,
   VOICE_OPTIONS,
 } from "../types/story";
 import type {
@@ -24,6 +29,9 @@ import type {
   NarrationTone,
   StoryBook,
   StoryPage,
+  VideoAspectRatio,
+  VideoDuration,
+  VideoResolution,
   VoiceName,
 } from "../types/story";
 
@@ -40,6 +48,16 @@ interface StorySpreadProps {
   onGenerateIllustration: (customPrompt?: string, customArtStyle?: string) => void;
   onIllustrateRemainingPages: () => void;
   onSelectIllustrationVersion: (imageUrl: string) => void;
+  videoDuration: VideoDuration;
+  onChangeVideoDuration: (duration: VideoDuration) => void;
+  videoResolution: VideoResolution;
+  onChangeVideoResolution: (resolution: VideoResolution) => void;
+  videoAspectRatio: VideoAspectRatio;
+  onChangeVideoAspectRatio: (ratio: VideoAspectRatio) => void;
+  isGeneratingVideo: boolean;
+  videoError: string | null;
+  onGenerateVideo: (customPrompt?: string, extendPrevious?: boolean) => void;
+  onSelectVideoVersion: (videoUrl: string, interactionId?: string) => void;
   voiceName: VoiceName;
   onChangeVoice: (voice: VoiceName) => void;
   narrationTone: NarrationTone;
@@ -77,6 +95,16 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
   onGenerateIllustration,
   onIllustrateRemainingPages,
   onSelectIllustrationVersion,
+  videoDuration,
+  onChangeVideoDuration,
+  videoResolution,
+  onChangeVideoResolution,
+  videoAspectRatio,
+  onChangeVideoAspectRatio,
+  isGeneratingVideo,
+  videoError,
+  onGenerateVideo,
+  onSelectVideoVersion,
   voiceName,
   onChangeVoice,
   narrationTone,
@@ -94,24 +122,37 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
   onOpenBuddy,
 }) => {
   const page: StoryPage = book.pages[pageIndex] ?? book.pages[0];
+  const [studioTab, setStudioTab] = useState<"illustration" | "video">("illustration");
+  const [viewMedia, setViewMedia] = useState<"illustration" | "video">("illustration");
   const [showSceneEditor, setShowSceneEditor] = useState(false);
   const [sceneDraft, setSceneDraft] = useState(page.illustrationPrompt);
+  const [motionDraft, setMotionDraft] = useState(page.illustrationPrompt);
   const [styleDraft, setStyleDraft] = useState(book.artStyle);
   const [imgLoadFailed, setImgLoadFailed] = useState(false);
 
   useEffect(() => {
     setSceneDraft(page.illustrationPrompt);
+    setMotionDraft(page.illustrationPrompt);
     setStyleDraft(book.artStyle);
     setImgLoadFailed(false);
+    setViewMedia(page.activeVideoUrl ? "video" : "illustration");
   }, [page.id, page.illustrationPrompt, book.artStyle]);
 
   useEffect(() => {
     setImgLoadFailed(false);
   }, [page.activeIllustrationUrl]);
 
+  useEffect(() => {
+    if (page.activeVideoUrl) {
+      setViewMedia("video");
+    }
+  }, [page.activeVideoUrl]);
+
   const missingCount = book.pages.filter((p) => !p.activeIllustrationUrl).length;
   const isFirstPage = pageIndex === 0;
   const isLastPage = pageIndex === book.pages.length - 1;
+  const videoHistory = page.videoHistory ?? [];
+  const hasVideo = Boolean(page.activeVideoUrl);
 
   return (
     <section id="reader-section" className="max-w-[1360px] mx-auto px-4 sm:px-8 pt-8 pb-14">
@@ -134,7 +175,7 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
             <button
               type="button"
               onClick={onIllustrateRemainingPages}
-              disabled={isGeneratingImage || isBatchIllustrating}
+              disabled={isGeneratingImage || isBatchIllustrating || isGeneratingVideo}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#D8CFC0] bg-white hover:bg-[#F3EFE6] disabled:opacity-50 text-xs sm:text-sm font-medium text-[#1F1C18] transition-colors whitespace-nowrap cursor-pointer"
             >
               {isBatchIllustrating ? (
@@ -166,23 +207,69 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch">
-          {/* Left Page: Illustration Canvas & 1K/2K/4K Studio */}
+          {/* Left Page: Illustration & Video Studio */}
           <div className="lg:col-span-7 p-5 sm:p-8 bg-[#FAF8F4] border-b lg:border-b-0 lg:border-r border-[#E4DDD0] flex flex-col justify-between gap-5">
             <div>
+              {hasVideo && (
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <span className="text-xs font-medium text-[#786E62]">
+                    Page {page.pageNumber} View
+                  </span>
+                  <div className="inline-flex items-center gap-1 p-1 bg-[#EFEAE0] rounded-lg border border-[#E4DDD0]">
+                    <button
+                      type="button"
+                      onClick={() => setViewMedia("illustration")}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                        viewMedia === "illustration"
+                          ? "bg-white text-[#1F1C18] shadow-xs font-semibold"
+                          : "text-[#5C5449] hover:text-[#1F1C18]"
+                      }`}
+                    >
+                      Illustration
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMedia("video")}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                        viewMedia === "video"
+                          ? "bg-white text-[#1E40AF] shadow-xs font-semibold"
+                          : "text-[#5C5449] hover:text-[#1F1C18]"
+                      }`}
+                    >
+                      Animated Video
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="relative aspect-[4/3] w-full rounded-xl bg-[#F3EFE6] border border-[#E4DDD0] overflow-hidden">
-                {isGeneratingImage && (
-                  <div className="absolute inset-0 z-20 bg-[#FBF9F5]/90 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center">
+                {(isGeneratingImage || isGeneratingVideo) && (
+                  <div className="absolute inset-0 z-20 bg-[#FBF9F5]/92 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center">
                     <Loader2 className="w-8 h-8 animate-spin text-[#1E40AF] mb-3" />
                     <p className="font-display text-lg font-medium text-[#1F1C18]">
-                      Painting Page {page.pageNumber} at {imageSize}...
+                      {isGeneratingVideo
+                        ? `Animating Page ${page.pageNumber} (${videoResolution} · ${videoDuration})...`
+                        : `Painting Page ${page.pageNumber} at ${imageSize}...`}
                     </p>
                     <p className="text-xs text-[#786E62] mt-1 max-w-sm">
-                      Creating a custom {styleDraft} illustration for "{page.chapterHeading}".
+                      {isGeneratingVideo
+                        ? "Bringing this storybook scene to life. Video generation can take up to a minute."
+                        : `Creating a custom ${styleDraft} illustration for "${page.chapterHeading}".`}
                     </p>
                   </div>
                 )}
 
-                {page.activeIllustrationUrl && !imgLoadFailed ? (
+                {viewMedia === "video" && page.activeVideoUrl ? (
+                  <video
+                    key={page.activeVideoUrl}
+                    src={page.activeVideoUrl}
+                    controls
+                    autoPlay
+                    loop
+                    playsInline
+                    className="w-full h-full object-contain bg-[#1F1C18]"
+                  />
+                ) : page.activeIllustrationUrl && !imgLoadFailed ? (
                   <img
                     src={page.activeIllustrationUrl}
                     alt={`Illustration for page ${page.pageNumber}: ${page.chapterHeading}`}
@@ -201,15 +288,29 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
                     <p className="text-sm text-[#5C5449] max-w-md leading-relaxed mb-5">
                       {page.illustrationPrompt}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => onGenerateIllustration(sceneDraft, styleDraft)}
-                      disabled={isGeneratingImage || isBatchIllustrating}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1E40AF] hover:bg-[#1E3A8A] disabled:opacity-50 text-white text-sm font-medium transition-colors cursor-pointer"
-                    >
-                      <Paintbrush className="w-4 h-4" />
-                      Paint Page {page.pageNumber} ({imageSize})
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => onGenerateIllustration(sceneDraft, styleDraft)}
+                        disabled={isGeneratingImage || isBatchIllustrating || isGeneratingVideo}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1E40AF] hover:bg-[#1E3A8A] disabled:opacity-50 text-white text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        <Paintbrush className="w-4 h-4" />
+                        Paint Page {page.pageNumber} ({imageSize})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStudioTab("video");
+                          onGenerateVideo(motionDraft, false);
+                        }}
+                        disabled={isGeneratingImage || isBatchIllustrating || isGeneratingVideo}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#D8CFC0] bg-white hover:bg-[#F3EFE6] disabled:opacity-50 text-[#1F1C18] text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        <Film className="w-4 h-4 text-[#B45309]" />
+                        Generate Video
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -218,22 +319,31 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
                 <span>
                   Plate {page.pageNumber} · {page.chapterHeading}
                 </span>
-                <span>{styleDraft}</span>
+                <span>
+                  {viewMedia === "video" && hasVideo
+                    ? `${videoResolution} · ${videoDuration} · ${videoAspectRatio}`
+                    : styleDraft}
+                </span>
               </div>
             </div>
 
-            {page.illustrationHistory.length > 0 && (
+            {/* Saved Illustration or Video Clips Strip */}
+            {studioTab === "illustration" && page.illustrationHistory.length > 0 && (
               <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
                 <span className="text-xs font-medium text-[#786E62] shrink-0">
                   Saved Plates:
                 </span>
                 {page.illustrationHistory.map((item, idx) => {
-                  const isSelected = item.imageUrl === page.activeIllustrationUrl;
+                  const isSelected =
+                    viewMedia === "illustration" && item.imageUrl === page.activeIllustrationUrl;
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => onSelectIllustrationVersion(item.imageUrl)}
+                      onClick={() => {
+                        setViewMedia("illustration");
+                        onSelectIllustrationVersion(item.imageUrl);
+                      }}
                       className={`group relative shrink-0 rounded-lg overflow-hidden border transition-all cursor-pointer ${
                         isSelected
                           ? "border-[#1E40AF] ring-2 ring-[#1E40AF]/20"
@@ -255,65 +365,151 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
               </div>
             )}
 
-            <div className="pt-4 border-t border-[#E4DDD0] space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xs font-semibold text-[#5C5449]">
-                    Image Size
-                  </span>
-                  <div
-                    role="group"
-                    aria-label="Illustration resolution"
-                    className="inline-flex items-center gap-1 p-1 bg-[#EFEAE0] rounded-lg border border-[#E4DDD0]"
-                  >
-                    {IMAGE_SIZES.map((size) => (
-                      <button
-                        key={size}
-                        type="button"
-                        onClick={() => onChangeImageSize(size)}
-                        className={`px-2.5 py-1 text-xs font-medium rounded-md tabular-nums transition-colors cursor-pointer ${
-                          imageSize === size
-                            ? "bg-white text-[#1E40AF] shadow-xs font-semibold"
-                            : "text-[#5C5449] hover:text-[#1F1C18]"
-                        }`}
-                      >
-                        {size}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            {studioTab === "video" && videoHistory.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <span className="text-xs font-medium text-[#786E62] shrink-0">
+                  Saved Clips:
+                </span>
+                {videoHistory.map((clip, idx) => {
+                  const isSelected =
+                    viewMedia === "video" && clip.videoUrl === page.activeVideoUrl;
+                  return (
+                    <button
+                      key={clip.id}
+                      type="button"
+                      onClick={() => {
+                        setViewMedia("video");
+                        onSelectVideoVersion(clip.videoUrl, clip.interactionId);
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono tabular-nums transition-colors shrink-0 cursor-pointer ${
+                        isSelected
+                          ? "border-[#1E40AF] bg-[#1E40AF]/10 text-[#1E40AF] font-semibold"
+                          : "border-[#D8CFC0] bg-white text-[#3D352C] hover:bg-[#F3EFE6]"
+                      }`}
+                    >
+                      <Film className="w-3.5 h-3.5" />
+                      Clip {videoHistory.length - idx} · {clip.duration} · {clip.resolution}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
-                <div className="flex items-center gap-2">
+            {/* Studio Controls: Illustration & Video Tabs */}
+            <div className="pt-4 border-t border-[#E4DDD0] space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-1 p-1 bg-[#EFEAE0] rounded-lg border border-[#E4DDD0]">
                   <button
                     type="button"
-                    onClick={() => setShowSceneEditor((prev) => !prev)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                      showSceneEditor
-                        ? "border-[#1E40AF] bg-[#1E40AF]/5 text-[#1E40AF]"
-                        : "border-[#D8CFC0] bg-white text-[#3D352C] hover:bg-[#F3EFE6]"
+                    onClick={() => setStudioTab("illustration")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                      studioTab === "illustration"
+                        ? "bg-white text-[#1F1C18] shadow-xs font-semibold"
+                        : "text-[#5C5449] hover:text-[#1F1C18]"
                     }`}
                   >
-                    <SlidersHorizontal className="w-3.5 h-3.5" />
-                    Edit Scene
+                    <ImagePlus className="w-3.5 h-3.5" />
+                    Illustrations
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => onGenerateIllustration(sceneDraft, styleDraft)}
-                    disabled={isGeneratingImage || isBatchIllustrating}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1E40AF] hover:bg-[#1E3A8A] disabled:opacity-50 text-white text-xs sm:text-sm font-medium transition-colors whitespace-nowrap cursor-pointer"
+                    onClick={() => setStudioTab("video")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                      studioTab === "video"
+                        ? "bg-white text-[#1E40AF] shadow-xs font-semibold"
+                        : "text-[#5C5449] hover:text-[#1F1C18]"
+                    }`}
                   >
-                    {isGeneratingImage ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <ImagePlus className="w-4 h-4" />
-                    )}
-                    New Illustration
+                    <Film className="w-3.5 h-3.5" />
+                    Video Studio
                   </button>
                 </div>
+
+                {studioTab === "illustration" ? (
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <div
+                      role="group"
+                      aria-label="Illustration resolution"
+                      className="inline-flex items-center gap-1 p-1 bg-[#EFEAE0] rounded-lg border border-[#E4DDD0]"
+                    >
+                      {IMAGE_SIZES.map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => onChangeImageSize(size)}
+                          className={`px-2.5 py-1 text-xs font-medium rounded-md tabular-nums transition-colors cursor-pointer ${
+                            imageSize === size
+                              ? "bg-white text-[#1E40AF] shadow-xs font-semibold"
+                              : "text-[#5C5449] hover:text-[#1F1C18]"
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowSceneEditor((prev) => !prev)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                        showSceneEditor
+                          ? "border-[#1E40AF] bg-[#1E40AF]/5 text-[#1E40AF]"
+                          : "border-[#D8CFC0] bg-white text-[#3D352C] hover:bg-[#F3EFE6]"
+                      }`}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      Edit Scene
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewMedia("illustration");
+                        onGenerateIllustration(sceneDraft, styleDraft);
+                      }}
+                      disabled={isGeneratingImage || isBatchIllustrating || isGeneratingVideo}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1E40AF] hover:bg-[#1E3A8A] disabled:opacity-50 text-white text-xs sm:text-sm font-medium transition-colors whitespace-nowrap cursor-pointer"
+                    >
+                      {isGeneratingImage ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <ImagePlus className="w-4 h-4" />
+                      )}
+                      New Illustration
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {page.activeVideoInteractionId && (
+                      <button
+                        type="button"
+                        onClick={() => onGenerateVideo(motionDraft, true)}
+                        disabled={isGeneratingVideo || isGeneratingImage}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#D8CFC0] bg-white hover:bg-[#F3EFE6] disabled:opacity-50 text-xs font-medium text-[#1F1C18] transition-colors whitespace-nowrap cursor-pointer"
+                      >
+                        <FastForward className="w-3.5 h-3.5 text-[#B45309]" />
+                        Extend (+{videoDuration})
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => onGenerateVideo(motionDraft, false)}
+                      disabled={isGeneratingVideo || isGeneratingImage || isBatchIllustrating}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1E40AF] hover:bg-[#1E3A8A] disabled:opacity-50 text-white text-xs sm:text-sm font-medium transition-colors whitespace-nowrap cursor-pointer"
+                    >
+                      {isGeneratingVideo ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Film className="w-4 h-4" />
+                      )}
+                      {page.activeIllustrationUrl ? "Animate Illustration" : "Generate Video"}
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {showSceneEditor && (
+              {studioTab === "illustration" && showSceneEditor && (
                 <div className="p-4 rounded-xl bg-white border border-[#E4DDD0] space-y-3">
                   <div>
                     <label
@@ -353,7 +549,10 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onGenerateIllustration(sceneDraft, styleDraft)}
+                      onClick={() => {
+                        setViewMedia("illustration");
+                        onGenerateIllustration(sceneDraft, styleDraft);
+                      }}
                       disabled={isGeneratingImage || !sceneDraft.trim()}
                       className="px-3.5 py-1.5 rounded-lg bg-[#B45309] hover:bg-[#92400E] disabled:opacity-50 text-white text-xs font-medium transition-colors cursor-pointer"
                     >
@@ -363,12 +562,101 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
                 </div>
               )}
 
-              {imageError && (
+              {studioTab === "video" && (
+                <div className="p-4 rounded-xl bg-white border border-[#E4DDD0] space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <span className="block text-[11px] font-semibold text-[#5C5449] mb-1">
+                        Duration
+                      </span>
+                      <div className="flex items-center gap-1 p-1 bg-[#F3EFE6] rounded-lg border border-[#E4DDD0]">
+                        {VIDEO_DURATIONS.map((dur) => (
+                          <button
+                            key={dur}
+                            type="button"
+                            onClick={() => onChangeVideoDuration(dur)}
+                            className={`flex-1 py-1 text-xs font-medium rounded-md tabular-nums transition-colors cursor-pointer ${
+                              videoDuration === dur
+                                ? "bg-white text-[#1E40AF] shadow-xs font-semibold"
+                                : "text-[#5C5449] hover:text-[#1F1C18]"
+                            }`}
+                          >
+                            {dur}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="block text-[11px] font-semibold text-[#5C5449] mb-1">
+                        Quality
+                      </span>
+                      <div className="flex items-center gap-1 p-1 bg-[#F3EFE6] rounded-lg border border-[#E4DDD0]">
+                        {VIDEO_RESOLUTIONS.map((res) => (
+                          <button
+                            key={res}
+                            type="button"
+                            onClick={() => onChangeVideoResolution(res)}
+                            className={`flex-1 py-1 text-xs font-medium rounded-md tabular-nums transition-colors cursor-pointer ${
+                              videoResolution === res
+                                ? "bg-white text-[#1E40AF] shadow-xs font-semibold"
+                                : "text-[#5C5449] hover:text-[#1F1C18]"
+                            }`}
+                          >
+                            {res}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="block text-[11px] font-semibold text-[#5C5449] mb-1">
+                        Aspect Ratio
+                      </span>
+                      <div className="flex items-center gap-1 p-1 bg-[#F3EFE6] rounded-lg border border-[#E4DDD0]">
+                        {VIDEO_ASPECT_RATIOS.map((ratio) => (
+                          <button
+                            key={ratio}
+                            type="button"
+                            onClick={() => onChangeVideoAspectRatio(ratio)}
+                            className={`flex-1 py-1 text-xs font-medium rounded-md tabular-nums transition-colors cursor-pointer ${
+                              videoAspectRatio === ratio
+                                ? "bg-white text-[#1E40AF] shadow-xs font-semibold"
+                                : "text-[#5C5449] hover:text-[#1F1C18]"
+                            }`}
+                          >
+                            {ratio}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="video-motion-prompt"
+                      className="block text-xs font-semibold text-[#1F1C18] mb-1"
+                    >
+                      Animation & Motion Prompt
+                    </label>
+                    <input
+                      id="video-motion-prompt"
+                      type="text"
+                      value={motionDraft}
+                      onChange={(e) => setMotionDraft(e.target.value)}
+                      placeholder="Describe how the characters and scene should gently move..."
+                      className="w-full rounded-lg border border-[#D8CFC0] bg-[#FBF9F5] px-3 py-2 text-xs sm:text-sm text-[#1F1C18] focus:border-[#1E40AF] focus:bg-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {(imageError || videoError) && (
                 <div
                   role="alert"
                   className="rounded-lg border border-[#FCA5A5] bg-[#FEF2F2] px-3.5 py-2.5 text-xs text-[#991B1B]"
                 >
-                  {imageError}
+                  {studioTab === "video" ? videoError || imageError : imageError || videoError}
                 </div>
               )}
             </div>

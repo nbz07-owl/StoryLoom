@@ -128,9 +128,35 @@ const TONE_STYLE_MAP: Record<string, string> = {
   bedtime: "Soft, calm, soothing bedtime storyteller with a cozy, unhurried cadence",
 };
 
+const VALID_VIDEO_ASPECT_RATIOS = new Set(["16:9", "9:16"]);
+const VALID_VIDEO_DURATIONS = new Set(["5s", "8s", "10s"]);
+const VALID_VIDEO_RESOLUTIONS = new Set(["360p", "720p", "1080p"]);
+
+function extractImageData(
+  imageUrl: string | undefined | null
+): { mimeType: string; data: string } | null {
+  if (!imageUrl || typeof imageUrl !== "string") return null;
+  if (imageUrl.startsWith("data:")) {
+    const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+    return { mimeType: match[1], data: match[2] };
+  }
+  if (imageUrl.startsWith("/src/assets/images/")) {
+    const safeName = path.basename(imageUrl);
+    const fullPath = path.resolve(__dirname, "src/assets/images", safeName);
+    if (fs.existsSync(fullPath)) {
+      const ext = path.extname(safeName).toLowerCase();
+      const mimeType = ext === ".png" ? "image/png" : "image/jpeg";
+      const data = fs.readFileSync(fullPath).toString("base64");
+      return { mimeType, data };
+    }
+  }
+  return null;
+}
+
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: "12mb" }));
+  app.use(express.json({ limit: "30mb" }));
 
   app.get("/api/health", (_req: Request, res: Response) => {
     res.json({ status: "ok" });
@@ -447,6 +473,124 @@ async function startServer() {
       });
     } catch (err) {
       const formatted = handleGeminiError(err, "Story Buddy chat");
+      res.status(formatted.status).json({ error: formatted.message });
+    }
+  });
+
+  app.post("/api/videos/generate", async (req: Request, res: Response) => {
+    try {
+      const {
+        prompt = "",
+        artStyle = "Watercolor & Ink",
+        imageUrl = "",
+        aspectRatio = "16:9",
+        duration = "5s",
+        resolution = "720p",
+        characterVisualGuide = "",
+        previousInteractionId = "",
+      } = req.body ?? {};
+
+      const cleanPrompt = String(prompt).trim();
+      if (!cleanPrompt) {
+        res.status(400).json({ error: "A scene description is required to generate a video." });
+        return;
+      }
+
+      const safeRatio = VALID_VIDEO_ASPECT_RATIOS.has(String(aspectRatio))
+        ? (String(aspectRatio) as "16:9" | "9:16")
+        : "16:9";
+      const safeDuration = VALID_VIDEO_DURATIONS.has(String(duration))
+        ? String(duration)
+        : "5s";
+      const safeResolution = VALID_VIDEO_RESOLUTIONS.has(String(resolution))
+        ? (String(resolution) as "360p" | "720p" | "1080p")
+        : "720p";
+
+      const ai = getGeminiClient();
+      const imageData = previousInteractionId ? null : extractImageData(String(imageUrl));
+
+      const motionInstruction = previousInteractionId
+        ? cleanPrompt
+        : [
+            `Gentle, enchanting children's picture-book animation in ${String(artStyle)} style with smooth, cozy motion and soft lighting.`,
+            characterVisualGuide ? `Character consistency: ${String(characterVisualGuide)}.` : "",
+            `Scene motion: ${cleanPrompt}`,
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+      const inputPayload = imageData
+        ? [
+            {
+              type: "image" as const,
+              mime_type: imageData.mimeType,
+              data: imageData.data,
+            },
+            {
+              type: "text" as const,
+              text: motionInstruction,
+            },
+          ]
+        : motionInstruction;
+
+      const interaction = await withRetry(
+        () =>
+          ai.interactions.create(
+            {
+              model: "gemini-omni-1.2-flash",
+              ...(previousInteractionId
+                ? { previous_interaction_id: String(previousInteractionId) }
+                : {}),
+              input: inputPayload,
+              background: false,
+              store: true,
+              stream: false,
+              response_format: {
+                type: "video",
+                aspect_ratio: safeRatio,
+                duration: safeDuration,
+                resolution: safeResolution,
+              },
+            },
+            { timeout: 300000 }
+          ),
+        1
+      );
+
+      const videoPart = interaction.output_video;
+      if (videoPart?.data) {
+        const mimeType = videoPart.mime_type || "video/mp4";
+        const videoUrl = `data:${mimeType};base64,${videoPart.data}`;
+        res.json({
+          videoUrl,
+          mimeType,
+          interactionId: interaction.id,
+          aspectRatio: safeRatio,
+          duration: safeDuration,
+          resolution: safeResolution,
+          promptUsed: cleanPrompt,
+        });
+        return;
+      }
+
+      if (videoPart?.uri) {
+        res.json({
+          videoUrl: videoPart.uri,
+          mimeType: videoPart.mime_type || "video/mp4",
+          interactionId: interaction.id,
+          aspectRatio: safeRatio,
+          duration: safeDuration,
+          resolution: safeResolution,
+          promptUsed: cleanPrompt,
+        });
+        return;
+      }
+
+      res.status(502).json({
+        error: "Video generation completed without returning video data. Please try again.",
+      });
+    } catch (err) {
+      const formatted = handleGeminiError(err, "Video generation");
       res.status(formatted.status).json({ error: formatted.message });
     }
   });
