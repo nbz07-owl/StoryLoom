@@ -1,0 +1,6 @@
+{
+  "name": "Storyloom",
+  "description": "An interactive children's storybook studio that reads stories aloud and generates fresh illustrations for every page.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
