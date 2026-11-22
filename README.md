@@ -22,6 +22,9 @@ An interactive children's picture-book studio that writes original stories, gene
 - **Storybook Workshop (`gemini-4-hydrogen` + `gemini-3-pro-image-preview`)**
   - Generate multi-page children's books (3–5 pages) tailored by reading age (`Ages 3–5`, `Ages 6–8`, `Ages 9–11`), main character name, and art medium, automatically painting a fresh illustration for every page.
 
+- **Structured PDF Storybook Export**
+  - Download any starter or generated book as a formatted landscape A4 PDF featuring a framed cover page, two-page illustrated spreads, chapter prose, and the closing Story Heart takeaway.
+
 - **Multi-Turn Story Buddy Chat**
   - Scrollable, context-aware chat drawer grounded in the active book and current page, with read-aloud playback on replies and four specialized role modes:
     - **Companion** (`gemini-4-hydrogen`) — friendly Q&A and story wonder

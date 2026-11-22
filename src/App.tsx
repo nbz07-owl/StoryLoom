@@ -10,6 +10,7 @@ import {
   loadSavedBooks,
   saveBookToLibrary,
 } from "./utils/storage";
+import { exportStoryBookToPdf } from "./utils/exportPdf";
 import type {
   ChatMessage,
   ChatMode,
@@ -75,6 +76,9 @@ export default function App() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<VideoAspectRatio>("16:9");
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+
+  // PDF export state
+  const [exportingBookId, setExportingBookId] = useState<string | null>(null);
 
   // Story creation state
   const [isCreatingStory, setIsCreatingStory] = useState(false);
@@ -951,6 +955,24 @@ export default function App() {
     [speakingMessageId, stopBuddyAudio, stopPageAudio, voiceName]
   );
 
+  const handleExportPdf = useCallback(
+    async (targetBook: StoryBook) => {
+      if (exportingBookId) return;
+      setExportingBookId(targetBook.id);
+      setImageError(null);
+      try {
+        await exportStoryBookToPdf(targetBook);
+      } catch (err) {
+        setImageError(
+          err instanceof Error ? err.message : "Could not export storybook PDF."
+        );
+      } finally {
+        setExportingBookId(null);
+      }
+    },
+    [exportingBookId]
+  );
+
   const handleNavigate = (section: "reader" | "library" | "create" | "buddy") => {
     setActiveSection(section);
     if (section === "buddy") {
@@ -1008,6 +1030,8 @@ export default function App() {
           onTogglePlayPage={handleTogglePlayPage}
           onReplayPage={handleReplayPage}
           onOpenBuddy={() => setIsBuddyOpen(true)}
+          isExportingPdf={exportingBookId === activeBook.id}
+          onExportPdf={() => void handleExportPdf(activeBook)}
         />
 
         <LibraryShelf
@@ -1015,6 +1039,8 @@ export default function App() {
           activeBookId={activeBook.id}
           onSelectBook={handleSelectBook}
           onDeleteBook={handleDeleteBook}
+          exportingBookId={exportingBookId}
+          onExportPdf={(book) => void handleExportPdf(book)}
         />
 
         <CreateStorySection

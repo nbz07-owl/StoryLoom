@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, Trash2 } from "lucide-react";
+import { BookOpen, FileDown, Loader2, Trash2 } from "lucide-react";
 import type { StoryBook } from "../types/story";
 
 interface LibraryShelfProps {
@@ -7,6 +7,8 @@ interface LibraryShelfProps {
   activeBookId: string;
   onSelectBook: (bookId: string) => void;
   onDeleteBook: (bookId: string) => void;
+  exportingBookId: string | null;
+  onExportPdf: (book: StoryBook) => void;
 }
 
 const BookCoverImage: React.FC<{ src: string; alt: string; title: string }> = ({
@@ -41,6 +43,8 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
   activeBookId,
   onSelectBook,
   onDeleteBook,
+  exportingBookId,
+  onExportPdf,
 }) => {
   return (
     <section
@@ -116,18 +120,32 @@ export const LibraryShelf: React.FC<LibraryShelfProps> = ({
                 </div>
               </button>
 
-              {!book.isStarter && (
-                <div className="px-6 py-2.5 bg-[#FAF8F4] border-t border-[#E4DDD0] flex justify-end">
+              <div className="px-6 py-2.5 bg-[#FAF8F4] border-t border-[#E4DDD0] flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => onExportPdf(book)}
+                  disabled={exportingBookId === book.id}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1E40AF] hover:underline disabled:opacity-50 transition-colors cursor-pointer py-1 whitespace-nowrap"
+                >
+                  {exportingBookId === book.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileDown className="w-3.5 h-3.5" />
+                  )}
+                  {exportingBookId === book.id ? "Building PDF..." : "Download PDF"}
+                </button>
+
+                {!book.isStarter && (
                   <button
                     type="button"
                     onClick={() => onDeleteBook(book.id)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#786E62] hover:text-[#B91C1C] transition-colors cursor-pointer py-1"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#786E62] hover:text-[#B91C1C] transition-colors cursor-pointer py-1 whitespace-nowrap"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Remove Book
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </article>
           );
         })}

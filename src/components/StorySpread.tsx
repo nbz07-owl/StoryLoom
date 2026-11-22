@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FastForward,
+  FileDown,
   Film,
   ImagePlus,
   Layers,
@@ -73,6 +74,8 @@ interface StorySpreadProps {
   onTogglePlayPage: () => void;
   onReplayPage: () => void;
   onOpenBuddy: () => void;
+  isExportingPdf: boolean;
+  onExportPdf: () => void;
 }
 
 function formatSeconds(sec: number): string {
@@ -120,6 +123,8 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
   onTogglePlayPage,
   onReplayPage,
   onOpenBuddy,
+  isExportingPdf,
+  onExportPdf,
 }) => {
   const page: StoryPage = book.pages[pageIndex] ?? book.pages[0];
   const [studioTab, setStudioTab] = useState<"illustration" | "video">("illustration");
@@ -188,6 +193,20 @@ export const StorySpread: React.FC<StorySpreadProps> = ({
                 : `Illustrate All (${missingCount} left)`}
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={onExportPdf}
+            disabled={isExportingPdf}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#D8CFC0] bg-white hover:bg-[#F3EFE6] disabled:opacity-55 text-xs sm:text-sm font-medium text-[#1F1C18] transition-colors whitespace-nowrap cursor-pointer"
+          >
+            {isExportingPdf ? (
+              <Loader2 className="w-4 h-4 animate-spin text-[#1E40AF]" />
+            ) : (
+              <FileDown className="w-4 h-4 text-[#B45309]" />
+            )}
+            {isExportingPdf ? "Exporting PDF..." : "Export PDF"}
+          </button>
 
           <button
             type="button"
